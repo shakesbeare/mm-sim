@@ -4,8 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bevy = { version="0.17.3", default-features=false, features=["bevy_log"] }
 anyhow = "1.0.100"
-bevy_ecs = "0.17.3"
 rand = "0.9.2"
 rand_distr = "0.5.1"
 thiserror = "2.0.17"
+tracing-subscriber = "0.3.23"
+crossterm = "0.29.0"
+textplots = "0.8.7"
+rgb = "0.8.53"
+tracing-appender = "0.2.4"
+chrono = "0.4.44"
+csv = "1.4.0"
+serde = { version = "1.0.228", features = ["serde_derive"] }
+serde_json = "1.0.149"
