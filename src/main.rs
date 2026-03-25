@@ -6,15 +6,12 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use mm_sim::{
-    display::{
-        AvgMMR, GRAPH_POINTS, LogTimer, MaxMMR, MinMMR, Ticks, TicksSinceStart, queue_stats,
-    },
-    match_in_progress::{end_matches, make_matches},
-    player::Player,
-    player_management::{STARTING_PLAYER_COUNT, try_add_player},
-    queue::Queue,
-    ring_buffer::RingBuffer,
+    GaveUp, display::{
+        AvgMMR, GRAPH_POINTS, HighWaitTime, LogTimer, LowWaitTime, MaxMMR, MeanRatingRange, MeanWaitTime, MedianWaitTime, MinMMR, SMOOTHING, Ticks, TicksSinceStart, queue_stats
+    }, r#match::{end_matches, make_matches}, player::Player, player_management::{STARTING_PLAYER_COUNT, try_add_player}, queue::Queue
 };
+
+use extra_collections::RingBuf;
 
 fn main() {
     setup_logging().unwrap();
@@ -24,11 +21,17 @@ fn main() {
     app.add_plugins(DefaultPlugins);
 
     app.insert_resource(Queue::default());
-    app.insert_resource(AvgMMR(RingBuffer::new(GRAPH_POINTS)));
-    app.insert_resource(MinMMR(RingBuffer::new(GRAPH_POINTS)));
-    app.insert_resource(MaxMMR(RingBuffer::new(GRAPH_POINTS)));
-    app.insert_resource(Ticks(RingBuffer::new(GRAPH_POINTS)));
+    app.insert_resource(AvgMMR(RingBuf::new(GRAPH_POINTS)));
+    app.insert_resource(MinMMR(RingBuf::new(GRAPH_POINTS)));
+    app.insert_resource(MaxMMR(RingBuf::new(GRAPH_POINTS)));
+    app.insert_resource(Ticks(RingBuf::new(GRAPH_POINTS)));
     app.insert_resource(TicksSinceStart::default());
+    app.insert_resource(MeanWaitTime(RingBuf::new(GRAPH_POINTS)));
+    app.insert_resource(LowWaitTime(RingBuf::new(SMOOTHING)));
+    app.insert_resource(MedianWaitTime(RingBuf::new(SMOOTHING)));
+    app.insert_resource(HighWaitTime(RingBuf::new(SMOOTHING)));
+    app.insert_resource(MeanRatingRange(RingBuf::new(SMOOTHING)));
+    app.insert_resource(GaveUp::default());
     app.insert_resource(mm_sim::fs::setup().unwrap());
 
     app.add_systems(Startup, startup);
@@ -80,8 +83,10 @@ fn startup(mut commands: Commands, mut queue: ResMut<Queue>) {
 }
 
 fn tick(
+    commands: Commands,
     mut timers: Query<&mut mm_sim::TickTimer>,
     mut queue: ResMut<Queue>,
+    gave_up: ResMut<GaveUp>,
     log_timer: Query<&mut LogTimer>,
     time: Res<Time>,
 ) {
@@ -93,5 +98,5 @@ fn tick(
         t.timer.tick(time.delta());
     }
 
-    queue.tick();
+    queue.tick(commands, gave_up);
 }

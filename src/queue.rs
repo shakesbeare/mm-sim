@@ -2,9 +2,10 @@ use bevy::log::tracing;
 use bevy::prelude::*;
 
 use crate::{
-    MATCH_PLAYER_COUNT,
-    player::{Player, QueuedPlayer},
+    GaveUp, MATCH_PLAYER_COUNT, player::{Player, QueuedPlayer}
 };
+
+const WAIT_BEFORE_GIVE_UP: usize = 1200;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum MatchmakingFailure {
@@ -41,6 +42,7 @@ impl MatchValidityCheckResult {
 #[derive(Resource, Default)]
 pub struct Queue {
     queue: Vec<QueuedPlayer>,
+    prioritize_high: bool,
 }
 
 impl std::fmt::Debug for Queue {
@@ -50,9 +52,20 @@ impl std::fmt::Debug for Queue {
 }
 
 impl Queue {
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, mut commands: Commands, mut gave_up: ResMut<GaveUp>) {
         for player in self.queue.iter_mut() {
             player.tick();
+        }
+        let logging_out: Vec<Player> = self
+            .queue
+            .iter()
+            .filter(|p| p.wait_time > WAIT_BEFORE_GIVE_UP)
+            .map(|p| p.player)
+            .collect();
+        self.queue.retain(|p| p.wait_time <= WAIT_BEFORE_GIVE_UP);
+        for p in logging_out {
+            gave_up.0 += 1;
+            commands.spawn(p);
         }
     }
 
@@ -65,7 +78,7 @@ impl Queue {
         }
 
         for (i, v) in self.queue.iter().enumerate() {
-            if qp.player.mmr() < v.player.mmr() {
+            if qp.player.rating() < v.player.rating() {
                 self.queue.insert(i, qp);
                 return;
             }
@@ -93,11 +106,11 @@ impl Queue {
         self.queue.get(index)
     }
 
-    pub fn mmr_at(&self, index: usize) -> Option<f32> {
-        Some(self.queue.get(index)?.player.mmr())
+    pub fn mmr_at(&self, index: usize) -> Option<f64> {
+        Some(self.queue.get(index)?.player.rating())
     }
 
-    pub fn sr_at(&self, index: usize) -> Option<f32> {
+    pub fn sr_at(&self, index: usize) -> Option<f64> {
         Some(self.queue.get(index)?.player.sr())
     }
 
@@ -111,12 +124,12 @@ impl Queue {
 
     /// Returns the range between the two players
     /// Returns None if at least one of the indicies does not contain a player
-    pub fn range_between(&self, left: usize, right: usize) -> Option<f32> {
+    pub fn range_between(&self, left: usize, right: usize) -> Option<f64> {
         let left = self.queue.get(left)?;
         let right = self.queue.get(right)?;
         Some(
-            f32::max(left.player.mmr(), right.player.mmr())
-                - f32::min(left.player.mmr(), right.player.mmr()),
+            f64::max(left.player.rating(), right.player.rating())
+                - f64::min(left.player.rating(), right.player.rating()),
         )
     }
 
@@ -134,7 +147,7 @@ impl Queue {
     /// function attempts to moderate these competing desires.
     ///
     /// Returns None if at least one of the indicies does not contain a player
-    pub fn combine_allowed_ranges(&self, left: usize, right: usize) -> Option<f32> {
+    pub fn combine_allowed_ranges(&self, left: usize, right: usize) -> Option<f64> {
         let left = self.queue.get(left)?;
         let right = self.queue.get(right)?;
         Some((left.max_acceptable_mmr_range_now() + right.max_acceptable_mmr_range_now()) / 2.0)
@@ -172,7 +185,13 @@ impl Queue {
         // p(M+c)'s max range, we can skip the window forward so that M' = M + c + 1.
         let mut games: Vec<[usize; MATCH_PLAYER_COUNT]> = Vec::new();
 
-        let mut m = 0;
+        let skip = if self.prioritize_high {
+            self.len() % MATCH_PLAYER_COUNT
+        } else {
+            0
+        };
+
+        let mut m = skip;
         let mut skip_list: Vec<usize> = Vec::new();
         'outer: while m < self.len() {
             let mut n = m + MATCH_PLAYER_COUNT;
@@ -245,7 +264,8 @@ impl Queue {
         // Grab the players out of the queue
         let mut player_games = Vec::new();
         for game in games.iter() {
-            let mut player_game = [Player::new(Some(0.0), Some(0.0), Some(0.0), Some(0.0)); MATCH_PLAYER_COUNT];
+            let mut player_game =
+                [Player::new(Some(0.0), Some(0.0), Some(0.0), Some(0.0)); MATCH_PLAYER_COUNT];
             for (k, index) in game.iter().enumerate() {
                 player_game[k] = self.queue.get(*index).unwrap().player;
             }

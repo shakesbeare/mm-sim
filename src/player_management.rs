@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 use rand::{Rng as _, seq::IteratorRandom as _};
 
-use crate::{match_in_progress::MatchInProgress, player::Player, queue::Queue};
+use crate::{r#match::Match, player::Player, queue::Queue};
 
-pub const STARTING_PLAYER_COUNT: usize = 7_099;
+pub const STARTING_PLAYER_COUNT: usize = 4155; // Half of peak players of smite 2 in last 24-hours
 pub const SOFT_MAX_PLAYERS: usize = STARTING_PLAYER_COUNT * 6;
 
 pub fn chance_to_quit(player_count: usize) -> f32 {
@@ -22,7 +22,7 @@ pub fn chance_to_add(player_count: usize) -> f32 {
     return start + t * (end - start);
 }
 
-pub fn try_add_player(mut commands: Commands, mut queue: ResMut<Queue>, mip: Query<&MatchInProgress>, logged_out_players: Query<(Entity, &Player)>) {
+pub fn try_add_player(mut commands: Commands, mut queue: ResMut<Queue>, mip: Query<&Match>, logged_out_players: Query<(Entity, &Player)>) {
     let player_count = mip.iter().flat_map(|m| m.players()).count() + queue.len();
     let mut rng = rand::rng();
     let attempt = rng.random_range(0.0..1.0);

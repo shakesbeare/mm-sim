@@ -826,6 +826,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "extra_collections"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40e9234d3fcf96a21da6d08c330495e322136bfd71800c88cfb1f40463d2d3fe"
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1117,11 +1123,13 @@ dependencies = [
  "chrono",
  "crossterm",
  "csv",
+ "extra_collections",
  "rand",
  "rand_distr",
  "rgb",
  "serde",
  "serde_json",
+ "skillratings",
  "textplots",
  "thiserror 2.0.17",
  "tracing-appender",
@@ -1577,6 +1585,15 @@ checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
 dependencies = [
  "errno",
  "libc",
+]
+
+[[package]]
+name = "skillratings"
+version = "0.28.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a6ee7559737c1adcd9184f168a04dc360c84878907c3ecc5c33c2320be1d47a"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
