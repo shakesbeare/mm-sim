@@ -3,7 +3,7 @@
 
 pub mod queue; 
 pub mod display;
-pub mod r#match;
+pub mod lobby;
 pub mod player;
 pub mod player_management;
 pub mod fs;

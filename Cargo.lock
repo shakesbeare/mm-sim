@@ -827,9 +827,9 @@ dependencies = [
 
 [[package]]
 name = "extra_collections"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40e9234d3fcf96a21da6d08c330495e322136bfd71800c88cfb1f40463d2d3fe"
+checksum = "fa85786144a9faa0fe86f29f9c0b0601579bfa7c1ca63dc2d1a2e60aec57146a"
 
 [[package]]
 name = "fastrand"

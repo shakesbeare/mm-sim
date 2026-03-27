@@ -12,10 +12,10 @@ use skillratings::{
 use crate::DEFAULT_VOLATILITY;
 use crate::GLICKO_CONFIG;
 use crate::MAX_MMR;
-use crate::r#match::Match;
+use crate::lobby::Lobby;
 use crate::{MEAN_MMR, STD_DEV};
 
-#[derive(Component, Copy, Debug, Clone, Default, PartialEq)]
+#[derive(Component, Copy, Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct Player {
     /// How good the player actually is in the simulation
     /// Used for determining the match result
@@ -101,11 +101,12 @@ impl Player {
 
     /// Returns true if the player has decided to keep queuing
     /// Returns false if the player has decided to log off
-    pub fn finished_match(&mut self, match_: &Match, player_count: usize) -> bool {
+    /// Will panic if the lobby is not LobbyStatus::Complete
+    pub fn finished_match(&mut self, lobby: &Lobby, player_count: usize) -> bool {
         let mut rng = rand::rng();
 
-        let winners = match_.get_result().unwrap();
-        let players = match_.teams();
+        let winners = lobby.get_result().unwrap();
+        let players = lobby.teams().unwrap();
         let won = players[winners].contains(self);
 
         let outcome = match won {
@@ -121,24 +122,10 @@ impl Player {
 
         };
 
-        let enemies_glicko = match_.glicko_for_enemies_of(self);
+        let enemies_glicko = lobby.glicko_for_enemies_of(self).unwrap();
         let (new_player_glicko, _) = glicko2(&player_glicko, &enemies_glicko, &outcome, &GLICKO_CONFIG);
 
 
-        // let new_volatility = glicko::new_volatility(self, &[match_]);
-        // let new_rd = glicko::new_rd(self, &[match_], glicko::temp_rd(self, new_volatility));
-        // let new_mmr = glicko::new_mmr(self, &[match_], new_rd);
-        //
-        // let new_rd = glicko::rd_glicko2_to_glicko(new_rd);
-        // let new_mmr = glicko::rating_glicko2_to_glicko(new_mmr);
-
-        // if new_volatility.is_nan() || new_rd.is_nan() || new_mmr.is_nan() {
-        //     tracing::error!("Something went wrong");
-        //     tracing::error!("{}", new_volatility);
-        //     tracing::error!("{}", new_rd);
-        //     tracing::error!("{}", new_mmr);
-        // }
-        //
         self.update_mm_stats(new_player_glicko.rating, new_player_glicko.deviation, new_player_glicko.volatility);
         self.update_sr(won);
         self.matches_played += 1;

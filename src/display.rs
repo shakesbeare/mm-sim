@@ -7,7 +7,7 @@ use rgb::RGB8;
 use textplots::{Chart, ColorPlot as _, Shape};
 
 use crate::{
-    MEAN_MMR, MatchStats, fs::FileHandles, r#match::Match, player::Player, queue::Queue
+    MEAN_MMR, MatchStats, fs::FileHandles, lobby::{Lobby, InProgress}, player::Player, queue::Queue
 };
 
 use extra_collections::RingBuf;
@@ -62,7 +62,7 @@ impl Default for LogTimer {
 }
 
 pub fn queue_stats(
-    matches_in_progress: Query<&Match>,
+    matches_in_progress: Query<&Lobby<InProgress>>,
     queue: Res<Queue>,
     mut log_timer: Query<&LogTimer>,
     mut avg_mmr: ResMut<AvgMMR>,
@@ -128,9 +128,10 @@ pub fn queue_stats(
 
     let players_in_game: Vec<Player> = matches_in_progress
         .iter()
+        .cloned()
         .flat_map(|m| m.players())
-        .copied()
         .collect();
+
     let all_players: Vec<Player> = queue
         .iter()
         .map(|p| p.player)

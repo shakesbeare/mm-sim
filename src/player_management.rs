@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rand::{Rng as _, seq::IteratorRandom as _};
 
-use crate::{r#match::Match, player::Player, queue::Queue};
+use crate::{lobby::Lobby, player::Player, queue::Queue};
 
 pub const STARTING_PLAYER_COUNT: usize = 2192;
 pub const SOFT_MAX_PLAYERS: usize = STARTING_PLAYER_COUNT * 4;
@@ -22,7 +22,7 @@ pub fn chance_to_add(player_count: usize) -> f32 {
     return start + t * (end - start);
 }
 
-pub fn try_add_player(mut commands: Commands, mut queue: ResMut<Queue>, mip: Query<&Match>, logged_out_players: Query<(Entity, &Player)>) {
+pub fn try_add_player(mut commands: Commands, mut queue: ResMut<Queue>, mip: Query<&Lobby>, logged_out_players: Query<(Entity, &Player)>) {
     let player_count = mip.iter().flat_map(|m| m.players()).count() + queue.len();
     let mut rng = rand::rng();
     let attempt = rng.random_range(0.0..1.0);

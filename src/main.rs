@@ -8,7 +8,7 @@ use crossterm::{
 use mm_sim::{
     MatchStats, display::{
         AvgMMR, GRAPH_POINTS, HighWaitTime, LogTimer, LowWaitTime, MaxMMR, MeanRatingRange, MeanWaitTime, MedianWaitTime, MinMMR, SMOOTHING, Ticks, TicksSinceStart, queue_stats
-    }, r#match::{end_matches, make_matches}, player::Player, player_management::{STARTING_PLAYER_COUNT, try_add_player}, queue::Queue
+    }, lobby::{end_matches, make_matches}, player::Player, player_management::{STARTING_PLAYER_COUNT, try_add_player}, queue::Queue
 };
 
 use extra_collections::RingBuf;
