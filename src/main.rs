@@ -6,7 +6,7 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use mm_sim::{
-    GaveUp, display::{
+    MatchStats, display::{
         AvgMMR, GRAPH_POINTS, HighWaitTime, LogTimer, LowWaitTime, MaxMMR, MeanRatingRange, MeanWaitTime, MedianWaitTime, MinMMR, SMOOTHING, Ticks, TicksSinceStart, queue_stats
     }, r#match::{end_matches, make_matches}, player::Player, player_management::{STARTING_PLAYER_COUNT, try_add_player}, queue::Queue
 };
@@ -31,14 +31,17 @@ fn main() {
     app.insert_resource(MedianWaitTime(RingBuf::new(SMOOTHING)));
     app.insert_resource(HighWaitTime(RingBuf::new(SMOOTHING)));
     app.insert_resource(MeanRatingRange(RingBuf::new(SMOOTHING)));
-    app.insert_resource(GaveUp::default());
+    app.insert_resource(MatchStats::default());
     app.insert_resource(mm_sim::fs::setup().unwrap());
 
     app.add_systems(Startup, startup);
 
     app.add_systems(PreUpdate, tick);
 
-    app.add_systems(Update, (queue_stats, make_matches, end_matches).chain());
+    app.add_systems(Update, queue_stats);
+    app.add_systems(Update, make_matches);
+    app.add_systems(Update, end_matches);
+
 
     app.add_systems(PostUpdate, try_add_player);
 
@@ -86,7 +89,7 @@ fn tick(
     commands: Commands,
     mut timers: Query<&mut mm_sim::TickTimer>,
     mut queue: ResMut<Queue>,
-    gave_up: ResMut<GaveUp>,
+    match_stats: ResMut<MatchStats>,
     log_timer: Query<&mut LogTimer>,
     time: Res<Time>,
 ) {
@@ -98,5 +101,5 @@ fn tick(
         t.timer.tick(time.delta());
     }
 
-    queue.tick(commands, gave_up);
+    queue.tick(commands, match_stats);
 }

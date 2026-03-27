@@ -2,7 +2,7 @@ use bevy::log::tracing;
 use bevy::prelude::*;
 
 use crate::{
-    GaveUp, MATCH_PLAYER_COUNT, player::{Player, QueuedPlayer}
+    MatchStats, MATCH_PLAYER_COUNT, player::{Player, QueuedPlayer}
 };
 
 const WAIT_BEFORE_GIVE_UP: usize = 1200;
@@ -52,7 +52,7 @@ impl std::fmt::Debug for Queue {
 }
 
 impl Queue {
-    pub fn tick(&mut self, mut commands: Commands, mut gave_up: ResMut<GaveUp>) {
+    pub fn tick(&mut self, mut commands: Commands, mut match_stats: ResMut<MatchStats>) {
         for player in self.queue.iter_mut() {
             player.tick();
         }
@@ -64,7 +64,7 @@ impl Queue {
             .collect();
         self.queue.retain(|p| p.wait_time <= WAIT_BEFORE_GIVE_UP);
         for p in logging_out {
-            gave_up.0 += 1;
+            match_stats.gave_up += 1;
             commands.spawn(p);
         }
     }

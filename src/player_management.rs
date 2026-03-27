@@ -3,12 +3,12 @@ use rand::{Rng as _, seq::IteratorRandom as _};
 
 use crate::{r#match::Match, player::Player, queue::Queue};
 
-pub const STARTING_PLAYER_COUNT: usize = 4155; // Half of peak players of smite 2 in last 24-hours
-pub const SOFT_MAX_PLAYERS: usize = STARTING_PLAYER_COUNT * 6;
+pub const STARTING_PLAYER_COUNT: usize = 2192;
+pub const SOFT_MAX_PLAYERS: usize = STARTING_PLAYER_COUNT * 4;
 
 pub fn chance_to_quit(player_count: usize) -> f32 {
-    let start = 0.05;
-    let end = 0.95;
+    let start = 0.0;
+    let end = 1.0;
     let t = player_count as f32 / SOFT_MAX_PLAYERS as f32;
 
     return start + t * (end - start);

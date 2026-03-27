@@ -7,7 +7,7 @@ use rgb::RGB8;
 use textplots::{Chart, ColorPlot as _, Shape};
 
 use crate::{
-    GaveUp, fs::FileHandles, r#match::Match, player::Player, queue::Queue
+    MEAN_MMR, MatchStats, fs::FileHandles, r#match::Match, player::Player, queue::Queue
 };
 
 use extra_collections::RingBuf;
@@ -73,7 +73,7 @@ pub fn queue_stats(
     mut high_wait_time: ResMut<HighWaitTime>,
     mut median_wait_time: ResMut<MedianWaitTime>,
     mut mean_rating_range: ResMut<MeanRatingRange>,
-    gave_up: Res<GaveUp>,
+    match_stats: Res<MatchStats>,
     mut ticks: ResMut<Ticks>,
     mut ticks_since: ResMut<TicksSinceStart>,
     logged_out_players: Query<&Player>,
@@ -172,13 +172,13 @@ pub fn queue_stats(
         std::io::stdout().execute(MoveTo(0, 0)).unwrap();
 
         println!(
-            "Average Queue Time {:07.2} — Median Queue Time: {:05} — Low Queue Time: {:05} — High Queue Time: {:07} — Gave Up: {:07} — Give Ups per second: {:07.5}",
+            "Average Queue Time {:07.2} — Median Queue Time: {:05} — Low Queue Time: {:05} — High Queue Time: {:07} — Gave Up: {:07} — Give Ups per game: {:07.5}",
             mean_wait,
             median_wait,
             low_wait,
             high_wait,
-            gave_up.0,
-            gave_up.0 as f64 / ticks_since.0 as f64,
+            match_stats.gave_up,
+            match_stats.gave_up as f64 / match_stats.matches_played as f64,
         );
         
         println!("Players in queue: {:07} — Players in match: {:07} — Total Players in Pool {:07} — Logged Out Players: {:07}",
@@ -205,7 +205,7 @@ pub fn queue_stats(
             mean_mmr, median_mmr, mean_range
         );
 
-        let chart_y_max = f64::max(3000.0, max_mmr + 500.0) as f32;
+        let chart_y_max = f64::max(MEAN_MMR * 2.0, max_mmr + 500.0) as f32;
 
         Chart::new_with_y_range(300, 100, left_bound, right_bound, 0., chart_y_max)
             .linecolorplot(
@@ -237,20 +237,20 @@ pub fn queue_stats(
         std::io::stdout().execute(RestorePosition).unwrap();
     }
 
-    file_handles.queue_stats.write_record(&[
-        format!("{}", mean_wait), 
-        format!("{}", mean_range),
-        format!("{}", queue.len()),
-        format!("{}", matches_in_progress.iter().flat_map(|m| m.players()).count()),
-        format!("{}", player_count),
-        format!("{}", logged_out_count),
-        format!("{}", mean_mmr),
-        format!("{}", median_mmr),
-        format!("{}", highest_mmr_player.rating()),
-        format!("{}", highest_mmr_player.matches_played()),
-        format!("{}", lowest_mmr_player.rating()),
-        format!("{}", lowest_mmr_player.matches_played())
-    ]).unwrap();
+    // file_handles.queue_stats.write_record(&[
+    //     format!("{}", mean_wait), 
+    //     format!("{}", mean_range),
+    //     format!("{}", queue.len()),
+    //     format!("{}", matches_in_progress.iter().flat_map(|m| m.players()).count()),
+    //     format!("{}", player_count),
+    //     format!("{}", logged_out_count),
+    //     format!("{}", mean_mmr),
+    //     format!("{}", median_mmr),
+    //     format!("{}", highest_mmr_player.rating()),
+    //     format!("{}", highest_mmr_player.matches_played()),
+    //     format!("{}", lowest_mmr_player.rating()),
+    //     format!("{}", lowest_mmr_player.matches_played())
+    // ]).unwrap();
 
     ticks_since.0 += 1;
 }

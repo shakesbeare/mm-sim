@@ -4,6 +4,7 @@ use rand_distr::Distribution as _;
 use rand_distr::Normal;
 use skillratings::glicko2::Glicko2Rating;
 
+use crate::MatchStats;
 use crate::TickTimer;
 use crate::player::Player;
 use crate::queue::Queue;
@@ -148,6 +149,7 @@ pub fn make_matches(mut commands: Commands, mut queue: ResMut<Queue>) {
 pub fn end_matches(
     mut commands: Commands,
     mut queue: ResMut<Queue>,
+    mut match_stats: ResMut<MatchStats>,
     matches_in_progress: Query<(Entity, &mut Match, &mut TickTimer)>,
 ) {
     let mip: Vec<&Match> = matches_in_progress.iter().map(|(_, m, _)| m).collect();
@@ -155,6 +157,7 @@ pub fn end_matches(
 
     for (e, mut m, mut timer) in matches_in_progress {
         if timer.just_finished() {
+            match_stats.matches_played += 1;
             m.finish_match();
             let players = m.teams();
             for team in players {
