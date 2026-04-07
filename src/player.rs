@@ -18,6 +18,14 @@ use crate::lobby::Complete;
 use crate::lobby::Lobby;
 use crate::{MEAN_MMR, STD_DEV};
 
+pub trait IntoPlayerList: Component {
+    fn into(&self) -> Vec<&Player<Any>>;
+}
+
+pub trait IntoPlayerListMut: Component {
+    fn into(&mut self) -> Vec<&mut Player<Any>>;
+}
+
 mod private {
     pub trait PlayerStatus {}
 }
@@ -33,10 +41,6 @@ impl private::PlayerStatus for InQueue {}
 #[derive(Component, Copy, Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct InLobby;
 impl private::PlayerStatus for InLobby {}
-
-#[derive(Component, Copy, Debug, Clone, Default, PartialEq, PartialOrd)]
-pub struct NeverToReturn;
-impl private::PlayerStatus for NeverToReturn {}
 
 #[derive(Component, Copy, Debug, Clone, Default, PartialEq, PartialOrd)]
 pub struct Any;
@@ -199,6 +203,11 @@ impl<T: private::PlayerStatus> Player<T> {
     }
 
     #[inline]
+    pub fn as_any_mut(&mut self) -> &mut Player<Any> {
+        unsafe { std::mem::transmute::<&mut Self, &mut Player<Any>>(self) }
+    }
+
+    #[inline]
     pub fn into_any(self) -> Player<Any> {
         unsafe { std::mem::transmute::<Self, Player<Any>>(self) }
     }
@@ -249,7 +258,8 @@ impl<T: private::PlayerStatus> Player<T> {
         let mut rng = rand::rng();
         let try_change_sr: usize = rng.random_range(0..100) + if won { 25 } else { 0 };
 
-        let sr_change_value: f64 = rng.random_range(-50.0..50.0) + if !won { 20.0 * self.learning_mult } else { 0.0 };
+        let sr_change_value: f64 =
+            rng.random_range(-50.0..50.0) + if !won { 20.0 * self.learning_mult } else { 0.0 };
 
         if try_change_sr > 50 {
             self.sr += sr_change_value;
@@ -268,10 +278,23 @@ impl<T: private::PlayerStatus> Player<T> {
         self.frustration += jitter;
         unsafe { std::mem::transmute::<Player<T>, Player<LoggedOut>>(self) }
     }
+}
 
-    #[inline]
-    pub fn immortalize(self) -> Player<NeverToReturn> {
-        unsafe { std::mem::transmute::<Player<T>, Player<NeverToReturn>>(self) }
+impl<T> IntoPlayerList for Player<T>
+where
+    T: Send + Sync + private::PlayerStatus + Component,
+{
+    fn into(&self) -> Vec<&Player<Any>> {
+        vec![self.as_any()]
+    }
+}
+
+impl<T> IntoPlayerListMut for Player<T>
+where
+    T: Send + Sync + private::PlayerStatus + Component,
+{
+    fn into(&mut self) -> Vec<&mut Player<Any>> {
+        vec![self.as_any_mut()]
     }
 }
 

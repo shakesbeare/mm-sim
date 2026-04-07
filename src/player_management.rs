@@ -1,21 +1,74 @@
 use std::cell::RefCell;
 
-use bevy::prelude::*;
-use rand::{Rng as _, seq::IteratorRandom as _};
+use bevy::{ecs::query::QueryData, prelude::*};
+use rand::{Rng as _, seq::IteratorRandom as _, seq::SliceRandom as _};
+use rand_distr::{Distribution as _, weighted::WeightedIndex};
 
 use crate::{
     MatchStats,
     lobby::{InProgress, Lobby, WaitingForPlayers},
-    player::{InLobby, InQueue, LoggedOut, Player},
+    player::{Any, InLobby, InQueue, IntoPlayerList, IntoPlayerListMut, LoggedOut, Player},
     time::SimTime,
 };
 
-pub const STARTING_PLAYER_COUNT: usize = 7729 / 4;
-pub const SOFT_MAX_PLAYERS: usize = STARTING_PLAYER_COUNT * 2;
+pub const TARGET_PLAYER_COUNT: usize = 5000;
+pub const SOFT_MAX_PLAYERS: usize = TARGET_PLAYER_COUNT / 3;
+
+#[derive(
+    Resource, Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Deref, DerefMut,
+)]
+pub struct PlayerCount(usize);
+
+#[derive(QueryData)]
+pub struct PlayerQuery {
+    playing: Option<&'static Player<InLobby>>,
+    queued: Option<&'static Player<InQueue>>,
+    logged_out: Option<&'static Player<LoggedOut>>,
+    waiting_for_players: Option<&'static Lobby<WaitingForPlayers>>,
+    in_progress: Option<&'static Lobby<InProgress>>,
+}
+
+pub trait FlattenPlayerQuery<'w> {
+    fn flatten(self) -> Vec<&'w Player<Any>>;
+}
+
+impl<'w, 's> FlattenPlayerQuery<'w> for Query<'w, 's, PlayerQuery> {
+    fn flatten(self) -> Vec<&'w Player<Any>> {
+        let mut out = Vec::new();
+
+        for pq in self {
+            if let Some(playing) = pq.playing {
+                out.push(playing.as_any());
+            }
+
+            if let Some(queued) = pq.queued {
+                out.push(queued.as_any());
+            }
+
+            if let Some(logged_out) = pq.logged_out {
+                out.push(logged_out.as_any());
+            }
+
+            if let Some(w) = pq.waiting_for_players {
+                for p in w.players().iter().filter(|p| p.is_some()) {
+                    out.push(p.as_ref().unwrap().as_any());
+                }
+            }
+
+            if let Some(ip) = pq.in_progress {
+                for p in ip.players() {
+                    out.push(p.as_any());
+                }
+            }
+        }
+
+        out
+    }
+}
 
 pub fn chance_to_add(player_count: usize) -> f32 {
-    let start = 0.99;
-    let end = 0.01;
+    let start = 0.90;
+    let end = 0.10;
     let t = player_count as f32 / SOFT_MAX_PLAYERS as f32;
 
     return start + t * (end - start);
@@ -23,23 +76,11 @@ pub fn chance_to_add(player_count: usize) -> f32 {
 
 pub fn try_add_player(world: &mut World) {
     let world = RefCell::new(world);
-
-    let mut players_waiting_query = world.borrow_mut().query::<&Lobby<WaitingForPlayers>>();
-    let waiting_count = players_waiting_query
-        .iter(&world.borrow())
-        .flat_map(|l| l.players())
-        .filter_map(|p| *p)
-        .count();
-    let mut players_playing_query = world.borrow_mut().query::<&Lobby<InProgress>>();
-    let playing_count = players_playing_query
-        .iter(&world.borrow())
-        .flat_map(|l| l.players())
-        .count();
-
-    let mut player_query = world
-        .borrow_mut()
-        .query_filtered::<Entity, Or<(With<Player<InLobby>>, With<Player<InQueue>>)>>();
-    let player_count = player_query.iter(&world.borrow()).len() + waiting_count + playing_count;
+    let player_count = {
+        let world = world.borrow();
+        let pc = world.resource::<PlayerCount>();
+        pc.0
+    };
 
     let mut rng = rand::rng();
     let attempt = rng.random_range(0.0..1.0);
@@ -145,4 +186,33 @@ pub fn give_up_queue(world: &mut World) {
 
     let mut match_stats = world.resource_mut::<MatchStats>();
     match_stats.gave_up += count;
+}
+
+/// If the total player count breaches HARD_MAX_PLAYERS, kill logged out players until the cap is
+/// respected.
+///
+/// Players with higher MMR and lower frustration are less likely to be chosen
+pub fn kill_player(
+    player_count: Query<PlayerQuery>,
+    players: Query<(Entity, &Player<LoggedOut>)>,
+    mut commands: Commands,
+) {
+    let player_count = player_count.flatten().len();
+    if player_count <= TARGET_PLAYER_COUNT {
+        return;
+    }
+    let mut rng = rand::rng();
+    let weights: Vec<f64> = players
+        .iter()
+        .map(|(_, p)| p.frustration() / 1.0 + p.rating() + p.matches_played().pow(2) as f64)
+        .collect();
+    let dist = WeightedIndex::new(&weights).unwrap_or_else(|_| {
+        panic!("Invalid weight!");
+    });
+
+    for _ in 0..(player_count - TARGET_PLAYER_COUNT) {
+        let index = dist.sample(&mut rng);
+        let (e, _) = players.iter().nth(index).unwrap();
+        commands.entity(e).despawn();
+    }
 }

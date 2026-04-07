@@ -14,6 +14,8 @@ use crate::TickTimer;
 use crate::lobby::private::*;
 use crate::player::InLobby;
 use crate::player::InQueue;
+use crate::player::IntoPlayerList;
+use crate::player::IntoPlayerListMut;
 use crate::player::Player;
 use crate::{MATCH_PLAYER_COUNT, TEAM_COUNT, TEAM_SIZE};
 
@@ -21,19 +23,19 @@ mod private {
     pub trait LobbyStatusMarker {}
 }
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct WaitingForPlayers;
 impl LobbyStatusMarker for WaitingForPlayers {}
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct InProgress;
 impl LobbyStatusMarker for InProgress {}
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct Complete;
 impl LobbyStatusMarker for Complete {}
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct TeamNumber(usize);
 
 #[derive(Debug, Default, PartialEq, PartialOrd, Clone, Copy)]
@@ -253,6 +255,15 @@ impl Lobby<InProgress> {
         }
     }
 
+    /// Return the underlying lobby mutable. Does not allocate
+    pub fn players_mut(&mut self) -> &mut [Player<InLobby>; MATCH_PLAYER_COUNT] {
+        unsafe {
+            std::mem::transmute::<_, &mut [Player<InLobby>; MATCH_PLAYER_COUNT]>(
+                &mut self.status_data.in_progress,
+            )
+        }
+    }
+
     /// Returns None if the teams have not yet been filled because the lobby is still waiting for
     /// players
     pub fn glicko_for_team(&self, team: usize) -> Glicko2Rating {
@@ -436,6 +447,41 @@ impl Lobby<Complete> {
 }
 
 impl<T: LobbyStatusMarker> Lobby<T> {}
+
+impl IntoPlayerList for Lobby<InProgress> {
+    fn into(&self) -> Vec<&Player<crate::player::Any>> {
+        self.players().iter().map(|p| p.as_any()).collect()
+    }
+}
+
+impl IntoPlayerListMut for Lobby<InProgress> {
+    fn into(&mut self) -> Vec<&mut Player<crate::player::Any>> {
+        self.players_mut()
+            .iter_mut()
+            .map(|p| p.as_any_mut())
+            .collect()
+    }
+}
+
+impl IntoPlayerList for Lobby<WaitingForPlayers> {
+    fn into(&self) -> Vec<&Player<crate::player::Any>> {
+        self.players()
+            .iter()
+            .filter(|p| p.is_some())
+            .map(|p| p.as_ref().unwrap().as_any())
+            .collect()
+    }
+}
+
+impl IntoPlayerListMut for Lobby<WaitingForPlayers> {
+    fn into(&mut self) -> Vec<&mut Player<crate::player::Any>> {
+        self.players_mut()
+            .iter_mut()
+            .filter(|p| p.is_some())
+            .map(|p| p.as_mut().unwrap().as_any_mut())
+            .collect()
+    }
+}
 
 // 1) sort all players into lobbies (Lobby<WaitingForPlayers>)
 //     a) if a valid lobby exists, put them into that lobby

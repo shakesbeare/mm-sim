@@ -5,20 +5,13 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use mm_sim::{
-    MatchStats,
-    lobby::{
+    MatchStats, lobby::{
         Lobby, WaitingForPlayers, add_players_to_lobbies, end_matches, merge_lobbies, start_lobbies,
-    },
-    player::{InQueue, LoggedOut, Player},
-    player_management::{
-        STARTING_PLAYER_COUNT, frustrated_players, give_up_queue, try_add_player,
-        unfrustrated_players,
-    },
-    stats::*,
-    time::SimTime,
+    }, player::{InQueue, LoggedOut, Player}, player_management::{
+        PlayerCount, frustrated_players, give_up_queue, kill_player, try_add_player, unfrustrated_players
+    }, stats::*, time::SimTime
 };
 use rand::Rng as _;
-use tracing::*;
 
 use extra_collections::RingBuf;
 
@@ -54,6 +47,7 @@ fn main() {
     app.insert_resource(MatchStats::default());
     app.insert_resource(mm_sim::fs::setup().unwrap());
     app.insert_resource(SimTime::default());
+    app.insert_resource(PlayerCount::default());
 
     app.add_systems(Startup, startup);
 
@@ -71,6 +65,7 @@ fn main() {
     app.add_systems(PostUpdate, frustrated_players);
     app.add_systems(PostUpdate, unfrustrated_players);
     app.add_systems(PostUpdate, give_up_queue);
+    app.add_systems(PostUpdate, kill_player);
 
     app.run();
 }
@@ -125,6 +120,7 @@ fn tick(
     mut floating_players: Query<&mut Player<InQueue>>,
     mut lobbies: Query<&mut Lobby<WaitingForPlayers>>,
     mut logged_out_players: Query<&mut Player<LoggedOut>>,
+    mut sim_time: ResMut<SimTime>,
     log_timer: Query<&mut LogTimer>,
     time: Res<Time>,
 ) {
@@ -147,4 +143,6 @@ fn tick(
     for mut p in logged_out_players.iter_mut() {
         p.tick();
     }
+
+    sim_time.tick();
 }

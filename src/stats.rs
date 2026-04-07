@@ -9,9 +9,8 @@ use tracing::*;
 
 use crate::{
     MEAN_MMR, MatchStats,
-    fs::FileHandles,
     lobby::{InProgress, Lobby, WaitingForPlayers},
-    player::{Any, InLobby, InQueue, LoggedOut, NeverToReturn, Player},
+    player::{Any, InQueue, LoggedOut, Player}, player_management::{FlattenPlayerQuery, PlayerQuery},
 };
 
 use extra_collections::RingBuf;
@@ -81,7 +80,7 @@ impl Default for LogTimer {
     fn default() -> Self {
         Self {
             timer: Timer::new(
-                std::time::Duration::from_secs_f32(1. / 12.),
+                std::time::Duration::from_secs_f32(1. / 16.),
                 TimerMode::Repeating,
             ),
         }
@@ -154,7 +153,6 @@ pub fn wait_time_stats(
 
 pub fn mmr_stats(
     players_in_queue: Query<&Player<InQueue>>,
-    dead_players: Query<&Player<NeverToReturn>>,
     lobbies_waiting: Query<&Lobby<WaitingForPlayers>>,
     lobbies_in_progress: Query<&Lobby<InProgress>>,
     mut mmr_stats: ResMut<MMRStats>,
@@ -181,7 +179,6 @@ pub fn mmr_stats(
         .clone()
         .into_iter()
         .chain(players_in_progress)
-        .chain(dead_players.iter().map(|p| p.as_any()))
         .chain(players_in_queue.iter().map(|p| p.as_any()))
         .collect();
 
@@ -212,10 +209,9 @@ pub fn mmr_stats(
 }
 
 pub fn display_stats(
+    players: Query<PlayerQuery>,
     lobbies_in_progress: Query<&Lobby<InProgress>>,
     players_in_queue: Query<&Player<InQueue>>,
-    lobbies_waiting: Query<&Lobby<WaitingForPlayers>>,
-    dead_players: Query<&Player<NeverToReturn>>,
     mut log_timer: Query<&LogTimer>,
     mmr_stats: Res<MMRStats>,
     mean_wait_time: Res<MeanWaitTime>,
@@ -228,41 +224,9 @@ pub fn display_stats(
     logged_out_players: Query<&Player<LoggedOut>>,
     // mut file_handles: ResMut<FileHandles>,
 ) {
-    let players_waiting: Vec<&Player<Any>> = lobbies_waiting
-        .iter()
-        .flat_map(|l| l.players().iter())
-        .filter_map(|p| {
-            if p.is_none() {
-                None
-            } else {
-                Some(p.as_ref().unwrap())
-            }
-        })
-        .map(|p| p.as_any())
-        .collect();
-
-    let players_in_game: Vec<&Player<Any>> = lobbies_in_progress
-        .iter()
-        .flat_map(|m| m.players())
-        .map(|p| p.as_any())
-        .collect();
-
-    let all_players: Vec<&Player<Any>> = players_in_queue
-        .iter()
-        .map(|p| p.as_any())
-        .chain(players_in_game)
-        .chain(players_waiting.clone())
-        .collect();
-
-    let players_in_queue: Vec<&Player<Any>> = players_waiting
-        .clone()
-        .into_iter()
-        .chain(players_in_queue.iter().map(|p| p.as_any()))
-        .collect();
-
     let player_count_in_match = lobbies_in_progress.iter().flat_map(|m| m.players()).count();
-    let player_count = player_count_in_match + players_in_queue.iter().len();
-    let dead_count = dead_players.iter().len();
+    let all_players = players.flatten();
+    let player_count = all_players.len();
 
     let mean_wait = mean_wait_time.0.iter().sum::<f64>() / SMOOTHING as f64;
     let low_wait = low_wait_time.0.iter().sum::<usize>() / SMOOTHING;
@@ -272,12 +236,6 @@ pub fn display_stats(
     let timer = log_timer.single_mut().unwrap();
 
     ticks.0.push(ticks_since.0 as f64);
-
-    if all_players.is_empty() {
-        tracing::error!("all players: {}", all_players.len());
-        tracing::error!("lobbies waiting: {}", lobbies_waiting.iter().len());
-        tracing::error!("players waiting: {}", players_waiting.len());
-    }
 
     let Some((highest_mmr_player_index, _)) = all_players
         .iter()
@@ -342,23 +300,25 @@ pub fn display_stats(
         );
 
         println!(
-            "Players in queue: {:07} — Players in match: {:07} — Total Players in Pool {:07} — Logged Out Players: {:07} — Dead Players: {:010}",
+            "Players in queue: {:07} — Players in match: {:07} — Players in Pool {:07} — Logged Out Players: {:07} — Total Players: {:07}",
             players_in_queue.iter().len(),
             player_count_in_match,
-            player_count,
+            player_count - logged_out_count,
             logged_out_count,
-            dead_count
+            player_count
         );
 
         print!(
-            "Highest MMR in Pool — MMR: {:04.0} — Matches Played: {:07} | ",
+            "Highest MMR in Pool — MMR: {:04.0} — SR: {:04.0} — Matches Played: {:07} | ",
             highest_mmr_player.rating(),
+            highest_mmr_player.sr(),
             highest_mmr_player.matches_played(),
         );
 
         println!(
-            "Lowest MMR in Pool — MMR: {:04.0} — Matches Played: {:07}",
+            "Lowest MMR in Pool — MMR: {:04.0} — SR: {:04.0} — Matches Played: {:07}",
             lowest_mmr_player.rating(),
+            lowest_mmr_player.sr(),
             lowest_mmr_player.matches_played(),
         );
 
