@@ -1,49 +1,76 @@
-use bevy::log::tracing;
 use bevy::prelude::*;
 use crossterm::{
     ExecutableCommand,
-    cursor::Hide,
+    cursor::{Hide, Show},
     terminal::{Clear, ClearType},
 };
 use mm_sim::{
-    MatchStats, display::{
-        AvgMMR, GRAPH_POINTS, HighWaitTime, LogTimer, LowWaitTime, MaxMMR, MeanRatingRange, MeanWaitTime, MedianWaitTime, MinMMR, SMOOTHING, Ticks, TicksSinceStart, queue_stats
-    }, lobby::{end_matches, make_matches}, player::Player, player_management::{STARTING_PLAYER_COUNT, try_add_player}, queue::Queue
+    MatchStats,
+    lobby::{
+        Lobby, WaitingForPlayers, add_players_to_lobbies, end_matches, merge_lobbies, start_lobbies,
+    },
+    player::{InQueue, LoggedOut, Player},
+    player_management::{
+        STARTING_PLAYER_COUNT, frustrated_players, give_up_queue, try_add_player,
+        unfrustrated_players,
+    },
+    stats::*,
+    time::SimTime,
 };
+use rand::Rng as _;
+use tracing::*;
 
 use extra_collections::RingBuf;
 
 fn main() {
     setup_logging().unwrap();
+
+    // show the cursor on ctrlc
+    ctrlc::set_handler(move || {
+        std::io::stdout().execute(Show).unwrap();
+        std::process::exit(0);
+    })
+    .expect("Failed to create CTRL-C handler");
+
+    // show the cursor on crash
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        std::io::stdout().execute(Show).unwrap();
+        default_panic(panic_info)
+    }));
+
     std::io::stdout().execute(Hide).unwrap();
 
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins);
+    app.add_plugins(DefaultPlugins.build().disable::<bevy::log::LogPlugin>());
 
-    app.insert_resource(Queue::default());
-    app.insert_resource(AvgMMR(RingBuf::new(GRAPH_POINTS)));
-    app.insert_resource(MinMMR(RingBuf::new(GRAPH_POINTS)));
-    app.insert_resource(MaxMMR(RingBuf::new(GRAPH_POINTS)));
+    app.insert_resource(MMRStats::default());
     app.insert_resource(Ticks(RingBuf::new(GRAPH_POINTS)));
     app.insert_resource(TicksSinceStart::default());
-    app.insert_resource(MeanWaitTime(RingBuf::new(GRAPH_POINTS)));
+    app.insert_resource(MeanWaitTime(RingBuf::new(SMOOTHING)));
     app.insert_resource(LowWaitTime(RingBuf::new(SMOOTHING)));
     app.insert_resource(MedianWaitTime(RingBuf::new(SMOOTHING)));
     app.insert_resource(HighWaitTime(RingBuf::new(SMOOTHING)));
-    app.insert_resource(MeanRatingRange(RingBuf::new(SMOOTHING)));
     app.insert_resource(MatchStats::default());
     app.insert_resource(mm_sim::fs::setup().unwrap());
+    app.insert_resource(SimTime::default());
 
     app.add_systems(Startup, startup);
 
     app.add_systems(PreUpdate, tick);
 
-    app.add_systems(Update, queue_stats);
-    app.add_systems(Update, make_matches);
+    app.add_systems(
+        Update,
+        (add_players_to_lobbies, merge_lobbies, start_lobbies).chain(),
+    );
     app.add_systems(Update, end_matches);
 
+    app.add_systems(Update, (mmr_stats, wait_time_stats, display_stats).chain());
 
     app.add_systems(PostUpdate, try_add_player);
+    app.add_systems(PostUpdate, frustrated_players);
+    app.add_systems(PostUpdate, unfrustrated_players);
+    app.add_systems(PostUpdate, give_up_queue);
 
     app.run();
 }
@@ -54,9 +81,14 @@ fn setup_logging() -> Result<()> {
     use tracing_subscriber::util::SubscriberInitExt as _;
 
     #[cfg(debug_assertions)]
-    let e_filter = tracing_subscriber::EnvFilter::new("info,mm_sim=debug");
+    let e_filter = tracing_subscriber::EnvFilter::new("info,mm_sim=trace");
     #[cfg(not(debug_assertions))]
     let e_filter = tracing_subscriber::EnvFilter::new("info");
+
+    // let stderr_layer = tracing_subscriber::fmt::layer()
+    //     .pretty()
+    //     .with_writer(std::io::stderr)
+    //     .with_filter(e_filter.clone());
 
     let queue_stats_appender = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
@@ -70,26 +102,29 @@ fn setup_logging() -> Result<()> {
         .with_filter(e_filter);
 
     tracing_subscriber::Registry::default()
+        // .with(stderr_layer)
         .with(file_layer)
         .try_init()?;
 
     Ok(())
 }
 
-fn startup(mut commands: Commands, mut queue: ResMut<Queue>) {
+fn startup(mut commands: Commands) {
     std::io::stdout().execute(Clear(ClearType::All)).unwrap();
     commands.spawn(LogTimer::default());
-    tracing::trace!("Inserting {} players", STARTING_PLAYER_COUNT);
-    for _ in 0..STARTING_PLAYER_COUNT {
-        queue.insert(Player::new(None, None, None, None));
-    }
+    // tracing::trace!("Inserting {} players", STARTING_PLAYER_COUNT);
+    // for _ in 0..STARTING_PLAYER_COUNT {
+    let mut rng = rand::rng();
+    let offset = rng.random_range(0..24);
+    commands.spawn(Player::new(None, None, None, None, Some(offset)));
+    // }
 }
 
 fn tick(
-    commands: Commands,
     mut timers: Query<&mut mm_sim::TickTimer>,
-    mut queue: ResMut<Queue>,
-    match_stats: ResMut<MatchStats>,
+    mut floating_players: Query<&mut Player<InQueue>>,
+    mut lobbies: Query<&mut Lobby<WaitingForPlayers>>,
+    mut logged_out_players: Query<&mut Player<LoggedOut>>,
     log_timer: Query<&mut LogTimer>,
     time: Res<Time>,
 ) {
@@ -101,5 +136,15 @@ fn tick(
         t.timer.tick(time.delta());
     }
 
-    queue.tick(commands, match_stats);
+    for mut p in floating_players.iter_mut() {
+        p.tick();
+    }
+
+    for mut l in lobbies.iter_mut() {
+        l.tick();
+    }
+
+    for mut p in logged_out_players.iter_mut() {
+        p.tick();
+    }
 }

@@ -1,12 +1,13 @@
 #![allow(unused_imports)]
 #![allow(clippy::too_many_arguments)]
 
-pub mod queue; 
-pub mod display;
+pub mod fs;
 pub mod lobby;
 pub mod player;
 pub mod player_management;
-pub mod fs;
+pub mod queue;
+pub mod stats;
+pub mod time;
 
 use bevy::prelude::*;
 use skillratings::glicko2::Glicko2Config;
@@ -14,7 +15,7 @@ use skillratings::glicko2::Glicko2Config;
 /// If the player is unrated, set the rating to 1500 and the RD (aka the standard deviation) to
 /// 350.
 pub const MEAN_MMR: f64 = 2000.0;
-pub const MAX_MMR: f64= 20_000.0;
+pub const MAX_MMR: f64 = 20_000.0;
 pub const STD_DEV: f64 = 600.0;
 pub const DEFAULT_DEVIATION: f64 = STD_DEV;
 /// Unrated players should get volatility of 0.06, but this value may be adjusted based on the
@@ -42,7 +43,7 @@ pub const TEAM_COUNT: usize = 2;
 pub const MATCH_PLAYER_COUNT: usize = TEAM_SIZE * TEAM_COUNT;
 
 #[derive(Resource, Debug, Default, PartialEq, PartialOrd, Clone, Copy)]
-pub struct MatchStats{
+pub struct MatchStats {
     gave_up: usize,
     matches_played: usize,
 }

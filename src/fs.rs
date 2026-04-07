@@ -19,7 +19,8 @@ pub fn setup() -> anyhow::Result<FileHandles> {
     let queue_stats_file = format!("./data/{}-queue_stats.csv", now);
     let queue_stats_path = std::path::Path::new(&queue_stats_file);
     File::create(queue_stats_path).context("create file")?;
-    let mut queue_stats_writer = csv::Writer::from_path(queue_stats_path).context("create csv writer")?;
+    let mut queue_stats_writer =
+        csv::Writer::from_path(queue_stats_path).context("create csv writer")?;
     queue_stats_writer.write_record([
         "Mean Wait Time",
         "Mean MMR Range",
