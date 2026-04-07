@@ -111,8 +111,8 @@ impl DateTime {
             // x is hour, y is likelihood
             let points: [Vec2; 4] = [
                 vec2(0.0, 0.5),
-                vec2(4.0, 0.0),
-                vec2(17.0, 1.0),
+                vec2(4.0, 0.1),
+                vec2(19.0, 1.0),
                 vec2(24.0, 0.5),
             ];
             let spline = CubicCardinalSpline::new_catmull_rom(points)
@@ -140,9 +140,8 @@ impl DateTime {
         };
 
         let mut rng = rand::rng();
-        let normal = Normal::new(time_component * month_component, 0.25).unwrap();
-        let sample = normal.sample(&mut rng);
-        f64::max(sample as f64, 0.0)
+        let normal = Normal::new(time_component * month_component, 0.02).unwrap();
+        normal.sample(&mut rng) as f64
     }
 
     #[inline]

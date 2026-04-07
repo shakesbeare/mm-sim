@@ -8,10 +8,9 @@ use mm_sim::{
     MatchStats, lobby::{
         Lobby, WaitingForPlayers, add_players_to_lobbies, end_matches, merge_lobbies, start_lobbies,
     }, player::{InQueue, LoggedOut, Player}, player_management::{
-        PlayerCount, frustrated_players, give_up_queue, kill_player, try_add_player, unfrustrated_players
+        NeedNewPlayer, PlayerAddTimer, PlayerCount, add_new_players, frustrated_players, give_up_queue, request_new_player, spawn_random_player_archetype, unfrustrated_players
     }, stats::*, time::SimTime
 };
-use rand::Rng as _;
 
 use extra_collections::RingBuf;
 
@@ -49,23 +48,26 @@ fn main() {
     app.insert_resource(SimTime::default());
     app.insert_resource(PlayerCount::default());
 
+    app.add_message::<NeedNewPlayer>();
+
     app.add_systems(Startup, startup);
 
     app.add_systems(PreUpdate, tick);
+    app.add_systems(PreUpdate, request_new_player);
 
     app.add_systems(
         Update,
         (add_players_to_lobbies, merge_lobbies, start_lobbies).chain(),
     );
+    app.add_systems(Update, spawn_random_player_archetype);
     app.add_systems(Update, end_matches);
 
     app.add_systems(Update, (mmr_stats, wait_time_stats, display_stats).chain());
 
-    app.add_systems(PostUpdate, try_add_player);
+    app.add_systems(PostUpdate, add_new_players);
     app.add_systems(PostUpdate, frustrated_players);
     app.add_systems(PostUpdate, unfrustrated_players);
     app.add_systems(PostUpdate, give_up_queue);
-    app.add_systems(PostUpdate, kill_player);
 
     app.run();
 }
@@ -104,15 +106,10 @@ fn setup_logging() -> Result<()> {
     Ok(())
 }
 
-fn startup(mut commands: Commands) {
+fn startup(mut commands: Commands, mut flood_writer: MessageWriter<NeedNewPlayer>) {
     std::io::stdout().execute(Clear(ClearType::All)).unwrap();
     commands.spawn(LogTimer::default());
-    // tracing::trace!("Inserting {} players", STARTING_PLAYER_COUNT);
-    // for _ in 0..STARTING_PLAYER_COUNT {
-    let mut rng = rand::rng();
-    let offset = rng.random_range(0..24);
-    commands.spawn(Player::new(None, None, None, None, Some(offset)));
-    // }
+    commands.spawn(PlayerAddTimer::default());
 }
 
 fn tick(

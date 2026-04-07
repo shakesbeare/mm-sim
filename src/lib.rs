@@ -48,7 +48,7 @@ pub struct MatchStats {
     matches_played: usize,
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug, Clone, PartialEq, Eq)]
 pub struct TickTimer {
     duration: usize,
     elapsed: usize,
@@ -95,7 +95,7 @@ impl TickTimer {
         self.mode
     }
 
-    pub fn tick(&mut self) -> &Self {
+    pub fn tick(&mut self) -> &mut Self {
         if self.mode != TimerMode::Repeating && self.is_finished() {
             return self;
         }

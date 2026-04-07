@@ -5,7 +5,7 @@ use rand::{Rng as _, seq::IteratorRandom as _, seq::SliceRandom as _};
 use rand_distr::{Distribution as _, weighted::WeightedIndex};
 
 use crate::{
-    MatchStats,
+    MatchStats, TickTimer,
     lobby::{InProgress, Lobby, WaitingForPlayers},
     player::{Any, InLobby, InQueue, IntoPlayerList, IntoPlayerListMut, LoggedOut, Player},
     time::SimTime,
@@ -18,6 +18,18 @@ pub const SOFT_MAX_PLAYERS: usize = TARGET_PLAYER_COUNT / 3;
     Resource, Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Deref, DerefMut,
 )]
 pub struct PlayerCount(usize);
+
+#[derive(Component, Debug, Clone, Eq, PartialEq, Deref, DerefMut)]
+pub struct PlayerAddTimer(TickTimer);
+
+#[derive(Message)]
+pub struct NeedNewPlayer;
+
+impl Default for PlayerAddTimer {
+    fn default() -> Self {
+        Self(TickTimer::new(24 * 60 * 60 / 3, TimerMode::Repeating))
+    }
+}
 
 #[derive(QueryData)]
 pub struct PlayerQuery {
@@ -67,30 +79,32 @@ impl<'w, 's> FlattenPlayerQuery<'w> for Query<'w, 's, PlayerQuery> {
 }
 
 pub fn chance_to_add(player_count: usize) -> f32 {
-    let start = 0.90;
-    let end = 0.10;
-    let t = player_count as f32 / SOFT_MAX_PLAYERS as f32;
+    let start = 0.99;
+    let end = 0.01;
+    let t = player_count as f32 / TARGET_PLAYER_COUNT as f32;
 
     return start + t * (end - start);
 }
 
-pub fn try_add_player(world: &mut World) {
-    let world = RefCell::new(world);
-    let player_count = {
-        let world = world.borrow();
-        let pc = world.resource::<PlayerCount>();
-        pc.0
-    };
+pub fn request_new_player(mut flood: MessageWriter<NeedNewPlayer>, players: Query<PlayerQuery>) {
+    if players.flatten().len() < TARGET_PLAYER_COUNT / 2 {
+        flood.write(NeedNewPlayer);
+    }
+}
 
-    let mut rng = rand::rng();
-    let attempt = rng.random_range(0.0..1.0);
+pub fn spawn_random_player_archetype(
+    mut commands: Commands,
+    mut flood: MessageReader<NeedNewPlayer>,
+) {
+    for _ in flood.read() {
+        commands.spawn(Player::new_random_archetype());
+    }
+}
 
-    if attempt <= chance_to_add(player_count) {
-        let mut world = world.borrow_mut();
-        let offset = rng.random_range(0..24);
-        let new_player = Player::new(None, None, None, None, Some(offset));
-        world.spawn(new_player);
-        return;
+pub fn add_new_players(mut commands: Commands, mut add_timer: Query<&mut PlayerAddTimer>) {
+    if add_timer.single_mut().unwrap().tick().just_finished() {
+        let new_player = Player::new_beginner();
+        commands.spawn(new_player);
     }
 }
 
@@ -103,7 +117,8 @@ pub fn unfrustrated_players(world: &mut World) {
     for (e, p) in logged_out_players.iter(world) {
         let attempt = rng.random_range(0.0..1.0);
         let datetime = sim_time.datetime_from_offset(p.offset());
-        if p.frustration() <= 0.0 && attempt < datetime.likelihood_to_play() {
+        let should_login = rng.random_range(0.0..1.0) + datetime.likelihood_to_play();
+        if p.frustration() <= 0.0 && attempt < should_login {
             to_return.push(e);
         }
     }
@@ -132,7 +147,8 @@ pub fn frustrated_players(world: &mut World) {
         }) {
             let attempt = rng.random_range(0.0..1.0);
             let datetime = sim_time.datetime_from_offset(p.offset());
-            if p.frustration() > 3600.0 * 5.0 || attempt >= datetime.likelihood_to_play() {
+            let should_logout = rng.random_range(0.0..1.0) + 1.0 / datetime.likelihood_to_play();
+            if p.frustration() > 3600.0 * 5.0 || attempt >= should_logout {
                 mark_sweep.push(i);
             }
         }
@@ -166,7 +182,13 @@ pub fn give_up_queue(world: &mut World) {
     let mut lobbies = world.query::<&mut Lobby<WaitingForPlayers>>();
     for mut lobby in lobbies.iter_mut(world) {
         let mut mark_sweep = Vec::new();
-        for (i, p) in lobby.players().iter().filter_map(|p| *p).enumerate() {
+        for (i, p) in lobby.players().iter().enumerate().filter_map(|(i, p)| {
+            if p.is_some() {
+                Some((i, p.unwrap()))
+            } else {
+                None
+            }
+        }) {
             if p.queue_stats().wait_time().unwrap() > 1200 {
                 mark_sweep.push(i);
             }
@@ -186,33 +208,4 @@ pub fn give_up_queue(world: &mut World) {
 
     let mut match_stats = world.resource_mut::<MatchStats>();
     match_stats.gave_up += count;
-}
-
-/// If the total player count breaches HARD_MAX_PLAYERS, kill logged out players until the cap is
-/// respected.
-///
-/// Players with higher MMR and lower frustration are less likely to be chosen
-pub fn kill_player(
-    player_count: Query<PlayerQuery>,
-    players: Query<(Entity, &Player<LoggedOut>)>,
-    mut commands: Commands,
-) {
-    let player_count = player_count.flatten().len();
-    if player_count <= TARGET_PLAYER_COUNT {
-        return;
-    }
-    let mut rng = rand::rng();
-    let weights: Vec<f64> = players
-        .iter()
-        .map(|(_, p)| p.frustration() / 1.0 + p.rating() + p.matches_played().pow(2) as f64)
-        .collect();
-    let dist = WeightedIndex::new(&weights).unwrap_or_else(|_| {
-        panic!("Invalid weight!");
-    });
-
-    for _ in 0..(player_count - TARGET_PLAYER_COUNT) {
-        let index = dist.sample(&mut rng);
-        let (e, _) = players.iter().nth(index).unwrap();
-        commands.entity(e).despawn();
-    }
 }

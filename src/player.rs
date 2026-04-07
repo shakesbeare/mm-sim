@@ -4,6 +4,7 @@ use bevy::log::tracing;
 use bevy::math::ops::sqrt;
 use bevy::prelude::*;
 use rand::Rng as _;
+use rand::seq::IndexedRandom as _;
 use rand_distr::Distribution as _;
 use rand_distr::Normal;
 use skillratings::{
@@ -46,7 +47,7 @@ impl private::PlayerStatus for InLobby {}
 pub struct Any;
 impl private::PlayerStatus for Any {}
 
-#[derive(Component, Copy, Debug, Clone, Default, PartialEq, PartialOrd)]
+#[derive(Component, Copy, Debug, Clone, PartialEq, PartialOrd)]
 pub struct Player<T: private::PlayerStatus> {
     /// How good the player actually is in the simulation
     /// Used for determining the match result
@@ -78,6 +79,31 @@ pub struct Player<T: private::PlayerStatus> {
     _marker: PhantomData<T>,
 }
 
+impl Default for Player<InQueue> {
+    fn default() -> Self {
+        Self::new(None, None, None, None, None)
+    }
+}
+
+impl Default for Player<InLobby> {
+    fn default() -> Self {
+        Self {
+            sr: Default::default(),
+            consistency: Default::default(),
+            rating: Default::default(),
+            learning_mult: Default::default(),
+            matches_played: Default::default(),
+            time_since_last_match: Default::default(),
+            rating_deviation: Default::default(),
+            volatility: Default::default(),
+            queue_stats: Default::default(),
+            frustration: Default::default(),
+            offset: Default::default(),
+            _marker: Default::default(),
+        }
+    }
+}
+
 impl Player<InQueue> {
     pub fn new(
         rating: Option<f64>,
@@ -87,10 +113,11 @@ impl Player<InQueue> {
         offset: Option<usize>,
     ) -> Self {
         let mut rng = rand::rng();
-        let normal = Normal::new(MEAN_MMR, STD_DEV).unwrap();
-
         Self {
-            sr: sr.unwrap_or(normal.sample(&mut rng)),
+            sr: sr.unwrap_or_else(|| {
+                let normal = Normal::new(MEAN_MMR, STD_DEV).unwrap();
+                normal.sample(&mut rng)
+            }),
             consistency: rng.random_range(0.0..STD_DEV),
             learning_mult: rng.random_range(0.1..5.0),
             rating: rating.unwrap_or(MEAN_MMR),
@@ -103,10 +130,51 @@ impl Player<InQueue> {
                 max_wait_time: 0,
             },
             frustration: 0.0,
-            offset: offset.unwrap_or(0),
+            offset: offset.unwrap_or(rng.random_range(0..24)),
             _marker: PhantomData,
         }
     }
+
+    pub fn new_wide() -> Self {
+        let mut rng = rand::rng();
+        let normal = Normal::new(MEAN_MMR, STD_DEV * 2.0).unwrap();
+        let sr = normal.sample(&mut rng);
+        Self::new(None, Some(sr), None, None, None)
+    }
+
+    pub fn new_narrow() -> Self {
+        let mut rng = rand::rng();
+        let normal = Normal::new(MEAN_MMR, STD_DEV / 2.0).unwrap();
+        let sr = normal.sample(&mut rng);
+        Self::new(None, Some(sr), None, None, None)
+    }
+
+    pub fn new_beginner() -> Self {
+        let mut rng = rand::rng();
+        let normal = Normal::new(MEAN_MMR / 2.0, STD_DEV).unwrap();
+        let sr = normal.sample(&mut rng);
+        Self::new(None, Some(sr), None, None, None)
+    }
+
+    pub fn new_smurf() -> Self {
+        let mut rng = rand::rng();
+        let normal = Normal::new(MEAN_MMR * 2.0, STD_DEV).unwrap();
+        let sr = normal.sample(&mut rng);
+        Self::new(None, Some(sr), None, None, None)
+    }
+
+    pub fn new_random_archetype() -> Self {
+        let mut rng = rand::rng();
+        let choices = [
+            Self::new_wide,
+            Self::new_narrow,
+            Self::new_beginner,
+            Self::new_smurf,
+        ];
+        let archetype = choices.choose(&mut rng).unwrap();
+        archetype()
+    }
+
     pub fn max_rating_range(&self) -> f64 {
         let wait_time = self.queue_stats.wait_time.unwrap();
         if wait_time < 900 {
