@@ -92,13 +92,13 @@ impl Default for SimTime {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub struct DateTime {
-    offset: usize,
-    year: usize,
-    month: usize,
-    day: usize,
-    hour: usize,
-    minute: usize,
-    second: usize,
+    pub offset: usize,
+    pub year: usize,
+    pub month: usize,
+    pub day: usize,
+    pub hour: usize,
+    pub minute: usize,
+    pub second: usize,
 }
 
 impl DateTime {

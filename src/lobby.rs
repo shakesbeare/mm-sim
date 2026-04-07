@@ -22,6 +22,7 @@ use crate::{MATCH_PLAYER_COUNT, TEAM_COUNT, TEAM_SIZE};
 
 mod private {
     pub trait LobbyStatusMarker {}
+    pub trait InProgressComplete : LobbyStatusMarker {}
 }
 
 #[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -31,10 +32,13 @@ impl LobbyStatusMarker for WaitingForPlayers {}
 #[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct InProgress;
 impl LobbyStatusMarker for InProgress {}
+impl InProgressComplete for InProgress {}
 
 #[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct Complete;
 impl LobbyStatusMarker for Complete {}
+impl InProgressComplete for Complete {}
+
 
 #[derive(Component, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct TeamNumber(usize);
@@ -245,9 +249,9 @@ impl Lobby<InProgress> {
         }
     }
 
-    pub fn teams(&self) -> &[[Player<InLobby>; TEAM_SIZE]; TEAM_COUNT] {
-        unsafe { &self.status_data.in_progress }
-    }
+    // pub fn teams(&self) -> &[[Player<InLobby>; TEAM_SIZE]; TEAM_COUNT] {
+    //     unsafe { &self.status_data.in_progress }
+    // }
 
     /// Players are not guaranteed to be in the same order as when they were initially added to the
     /// lobby
@@ -266,47 +270,6 @@ impl Lobby<InProgress> {
                 &mut self.status_data.in_progress,
             )
         }
-    }
-
-    /// Returns None if the teams have not yet been filled because the lobby is still waiting for
-    /// players
-    pub fn glicko_for_team(&self, team: usize) -> Glicko2Rating {
-        let team = self.teams()[team];
-        let rating = team.iter().map(|p| p.rating()).sum::<f64>() / TEAM_SIZE as f64;
-        let volatility = team.iter().map(|p| p.volatility()).sum::<f64>() / TEAM_SIZE as f64;
-        let deviation = team.iter().map(|p| p.rating_deviation()).sum::<f64>() / TEAM_SIZE as f64;
-
-        Glicko2Rating {
-            rating,
-            deviation,
-            volatility,
-        }
-    }
-
-    pub fn glicko_for_enemies_of(&self, player: &Player<InLobby>) -> Glicko2Rating {
-        let enemies = self.enemies_of(player);
-
-        let rating = enemies.iter().map(|p| p.rating()).sum::<f64>() / enemies.len() as f64;
-        let volatility = enemies.iter().map(|p| p.volatility()).sum::<f64>() / enemies.len() as f64;
-        let deviation =
-            enemies.iter().map(|p| p.rating_deviation()).sum::<f64>() / enemies.len() as f64;
-
-        Glicko2Rating {
-            rating,
-            deviation,
-            volatility,
-        }
-    }
-
-    /// Returns None if the teams have not yet been filled because the lobby is still waiting for
-    /// players
-    pub fn enemies_of(&self, player: &Player<InLobby>) -> Vec<&Player<InLobby>> {
-        let team = self.teams().iter().find(|t| t.contains(player)).unwrap();
-
-        self.players()
-            .iter()
-            .filter(|p| !team.contains(p))
-            .collect()
     }
 
     /// Sets the status of the match to complete
@@ -368,9 +331,9 @@ impl Lobby<InProgress> {
 }
 
 impl Lobby<Complete> {
-    pub fn teams(&self) -> &[[Player<InLobby>; TEAM_SIZE]; TEAM_COUNT] {
-        unsafe { &self.status_data.complete.teams }
-    }
+    // pub fn teams(&self) -> &[[Player<InLobby>; TEAM_SIZE]; TEAM_COUNT] {
+    //     unsafe { &self.status_data.complete.teams }
+    // }
 
     pub fn players(&self) -> [&Player<InLobby>; MATCH_PLAYER_COUNT] {
         std::array::from_fn(|i| {
@@ -378,46 +341,6 @@ impl Lobby<Complete> {
             let team = i % TEAM_COUNT;
             unsafe { &self.status_data.complete.teams[team][slot] }
         })
-    }
-
-    pub fn glicko_for_team(&self, team: usize) -> Glicko2Rating {
-        let team = self.teams()[team];
-        let rating = team.iter().map(|p| p.rating()).sum::<f64>() / TEAM_SIZE as f64;
-        let volatility = team.iter().map(|p| p.volatility()).sum::<f64>() / TEAM_SIZE as f64;
-        let deviation = team.iter().map(|p| p.rating_deviation()).sum::<f64>() / TEAM_SIZE as f64;
-
-        Glicko2Rating {
-            rating,
-            deviation,
-            volatility,
-        }
-    }
-
-    pub fn glicko_for_enemies_of(&self, player: &Player<InLobby>) -> Glicko2Rating {
-        let enemies = self.enemies_of(player);
-
-        let rating = enemies.iter().map(|p| p.rating()).sum::<f64>() / enemies.len() as f64;
-        let volatility = enemies.iter().map(|p| p.volatility()).sum::<f64>() / enemies.len() as f64;
-        let deviation =
-            enemies.iter().map(|p| p.rating_deviation()).sum::<f64>() / enemies.len() as f64;
-
-        Glicko2Rating {
-            rating,
-            deviation,
-            volatility,
-        }
-    }
-
-    /// Returns None if the teams have not yet been filled because the lobby is still waiting for
-    /// players
-    pub fn enemies_of(&self, player: &Player<InLobby>) -> Vec<&Player<InLobby>> {
-        let team = self.teams().iter().find(|t| t.contains(player)).unwrap();
-
-        self.players()
-            .iter()
-            .filter(|p| !team.contains(p))
-            .copied()
-            .collect()
     }
 
     pub fn get_result(&self) -> usize {
@@ -451,6 +374,85 @@ impl Lobby<Complete> {
 }
 
 impl<T: LobbyStatusMarker> Lobby<T> {}
+
+impl<T: InProgressComplete> Lobby<T> {
+    pub fn teams(&self) -> &[[Player<InLobby>; TEAM_SIZE]; TEAM_COUNT] {
+        unsafe { &self.status_data.in_progress }
+    }
+
+    pub fn glicko_for_team(&self, team: usize) -> Glicko2Rating {
+        let team = self.teams()[team];
+        let rating = team.iter().map(|p| p.rating()).sum::<f64>() / TEAM_SIZE as f64;
+        let volatility = team.iter().map(|p| p.volatility()).sum::<f64>() / TEAM_SIZE as f64;
+        let deviation = team.iter().map(|p| p.rating_deviation()).sum::<f64>() / TEAM_SIZE as f64;
+
+        Glicko2Rating {
+            rating,
+            deviation,
+            volatility,
+        }
+    }
+
+    pub fn glicko_for_team_of(&self, player: &Player<InLobby>) -> Glicko2Rating {
+        let team = self.allies_of(player);
+
+        let rating = team.iter().map(|p| p.rating()).sum::<f64>() / team.len() as f64;
+        let volatility = team.iter().map(|p| p.volatility()).sum::<f64>() / team.len() as f64;
+        let deviation = team.iter().map(|p| p.rating_deviation()).sum::<f64>() / team.len() as f64;
+
+        Glicko2Rating {
+            rating,
+            deviation,
+            volatility,
+        }
+    }
+
+    pub fn glicko_for_enemies_of(&self, player: &Player<InLobby>) -> Glicko2Rating {
+        let team = self.enemies_of(player);
+
+        let rating = team.iter().map(|p| p.rating()).sum::<f64>() / team.len() as f64;
+        let volatility = team.iter().map(|p| p.volatility()).sum::<f64>() / team.len() as f64;
+        let deviation = team.iter().map(|p| p.rating_deviation()).sum::<f64>() / team.len() as f64;
+
+        Glicko2Rating {
+            rating,
+            deviation,
+            volatility,
+        }
+    }
+
+    pub fn glicko_for_player_with_allies(&self, player: &Player<InLobby>) -> Glicko2Rating {
+        let team = self.allies_of(player);
+
+        let rating = team.iter().map(|p| p.rating()).sum::<f64>() / team.len() as f64;
+        Glicko2Rating {
+            rating,
+            deviation: player.rating_deviation(),
+            volatility: player.volatility(),
+        }
+    }
+
+
+    pub fn enemies_of(&self, player: &Player<InLobby>) -> Vec<&Player<InLobby>> {
+        self.teams()
+            .iter()
+            .find(|t| t.contains(player))
+            .unwrap()
+            .iter()
+            .collect()
+    }
+
+    /// Includes the given player in the output
+    pub fn allies_of(&self, player: &Player<InLobby>) -> Vec<&Player<InLobby>> {
+        self.teams()
+            .iter()
+            .find(|t| t.contains(player))
+            .unwrap()
+            .iter()
+            .collect()
+    }
+
+}
 
 impl IntoPlayerList for Lobby<InProgress> {
     fn into(&self) -> Vec<&Player<crate::player::Any>> {
@@ -551,7 +553,6 @@ pub fn start_lobbies(
         }
     }
 
-    let mut rng = rand::rng();
     for e in todo {
         let mut ent = world.entity_mut(e);
         // should be guaranteed

@@ -12,12 +12,13 @@ use crate::{
     lobby::{InProgress, Lobby, WaitingForPlayers},
     player::{Any, InQueue, LoggedOut, Player},
     player_management::{FlattenPlayerQuery, PlayerQuery},
+    time::SimTime,
 };
 
 use extra_collections::RingBuf;
 
 pub const GRAPH_POINTS: usize = 20_000;
-pub const SMOOTHING: usize = 2000;
+pub const SMOOTHING: usize = 10_000;
 
 #[derive(Resource)]
 pub struct MMRStats {
@@ -223,6 +224,7 @@ pub fn display_stats(
     match_stats: Res<MatchStats>,
     mut ticks: ResMut<Ticks>,
     mut ticks_since: ResMut<TicksSinceStart>,
+    sim_time: Res<SimTime>,
     logged_out_players: Query<&Player<LoggedOut>>,
     // mut file_handles: ResMut<FileHandles>,
 ) {
@@ -365,23 +367,19 @@ pub fn display_stats(
             )
             .display();
 
+        let datetime = sim_time.base_time();
+        println!(
+            "Time since start: {} years {:02} months {:02} days {:02} hours {:02} minutes {:02} seconds",
+            datetime.year,
+            datetime.month,
+            datetime.day,
+            datetime.hour,
+            datetime.minute,
+            datetime.second
+        );
+
         std::io::stdout().execute(RestorePosition).unwrap();
     }
-
-    // file_handles.queue_stats.write_record(&[
-    //     format!("{}", mean_wait),
-    //     format!("{}", mean_range),
-    //     format!("{}", queue.len()),
-    //     format!("{}", matches_in_progress.iter().flat_map(|m| m.players()).count()),
-    //     format!("{}", player_count),
-    //     format!("{}", logged_out_count),
-    //     format!("{}", mean_mmr),
-    //     format!("{}", median_mmr),
-    //     format!("{}", highest_mmr_player.rating()),
-    //     format!("{}", highest_mmr_player.matches_played()),
-    //     format!("{}", lowest_mmr_player.rating()),
-    //     format!("{}", lowest_mmr_player.matches_played())
-    // ]).unwrap();
 
     ticks_since.0 += 1;
 }

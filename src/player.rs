@@ -15,6 +15,8 @@ use skillratings::{
 use crate::DEFAULT_VOLATILITY;
 use crate::GLICKO_CONFIG;
 use crate::MAX_MMR;
+use crate::NUM_PLACEMENTS;
+use crate::PLACEMENTS_VOLATILITY;
 use crate::lobby::Complete;
 use crate::lobby::Lobby;
 use crate::time::MIN_LATENCY;
@@ -53,7 +55,7 @@ pub struct Player<T: private::PlayerStatus> {
     /// How good the player actually is in the simulation
     /// Used for determining the match result
     sr: f64,
-    /// How consistently the player performs at their SR
+    /// How consistently the player performs at their SR, lower values are better.
     /// Used for determining the match result
     /// This is used for the standard deviation later when their actual performance is sampled
     consistency: f64,
@@ -136,35 +138,35 @@ impl Player<InQueue> {
         }
     }
 
-    pub fn new_wide() -> Self {
+    pub fn new_wide(volatility: f64) -> Self {
         let mut rng = rand::rng();
         let normal = Normal::new(MEAN_MMR, STD_DEV * 2.0).unwrap();
         let sr = normal.sample(&mut rng);
-        Self::new(None, Some(sr), None, None, None)
+        Self::new(None, Some(sr), None, Some(volatility), None)
     }
 
-    pub fn new_narrow() -> Self {
+    pub fn new_narrow(volatility: f64) -> Self {
         let mut rng = rand::rng();
         let normal = Normal::new(MEAN_MMR, STD_DEV / 2.0).unwrap();
         let sr = normal.sample(&mut rng);
-        Self::new(None, Some(sr), None, None, None)
+        Self::new(None, Some(sr), None, Some(volatility), None)
     }
 
-    pub fn new_beginner() -> Self {
+    pub fn new_beginner(volatility: f64) -> Self {
         let mut rng = rand::rng();
         let normal = Normal::new(MEAN_MMR / 2.0, STD_DEV).unwrap();
         let sr = normal.sample(&mut rng);
-        Self::new(None, Some(sr), None, None, None)
+        Self::new(None, Some(sr), None, Some(volatility), None)
     }
 
-    pub fn new_smurf() -> Self {
+    pub fn new_smurf(volatility: f64) -> Self {
         let mut rng = rand::rng();
         let normal = Normal::new(MEAN_MMR * 2.0, STD_DEV).unwrap();
         let sr = normal.sample(&mut rng);
-        Self::new(None, Some(sr), None, None, None)
+        Self::new(None, Some(sr), None, Some(volatility), None)
     }
 
-    pub fn new_random_archetype() -> Self {
+    pub fn new_random_archetype(volatility: f64) -> Self {
         let mut rng = rand::rng();
         let choices = [
             Self::new_wide,
@@ -173,7 +175,7 @@ impl Player<InQueue> {
             Self::new_smurf,
         ];
         let archetype = choices.choose(&mut rng).unwrap();
-        archetype()
+        archetype(volatility)
     }
 
     pub fn max_rating_range(&self) -> f64 {
@@ -219,13 +221,9 @@ impl Player<InLobby> {
             false => Outcomes::LOSS,
         };
 
-        let player_glicko = Glicko2Rating {
-            rating: self.rating,
-            deviation: self.rating_deviation,
-            volatility: self.volatility,
-        };
-
+        let player_glicko = self.glicko();
         let enemies_glicko = lobby.glicko_for_enemies_of(&self);
+
         let (new_player_glicko, _) =
             glicko2(&player_glicko, &enemies_glicko, &outcome, &GLICKO_CONFIG);
 
@@ -262,6 +260,14 @@ impl Player<LoggedOut> {
 }
 
 impl<T: private::PlayerStatus> Player<T> {
+    pub fn glicko(&self) -> Glicko2Rating {
+        Glicko2Rating {
+            rating: self.rating,
+            deviation: self.rating_deviation,
+            volatility: self.volatility,
+        }
+    }
+
     #[inline]
     pub fn offset(&self) -> usize {
         self.offset
@@ -324,17 +330,27 @@ impl<T: private::PlayerStatus> Player<T> {
 
     #[inline]
     pub fn update_mm_stats(&mut self, rating: f64, rating_deviation: f64, volatility: f64) {
-        self.rating = rating;
+        self.rating = f64::max(rating, 0.0);
         self.rating_deviation = rating_deviation;
-        self.volatility = volatility;
+
+        // placement matches!
+        if self.matches_played < NUM_PLACEMENTS {
+            self.volatility = PLACEMENTS_VOLATILITY;
+        } else {
+            self.volatility = volatility;
+        }
     }
 
     pub fn update_sr(&mut self, won: bool) {
         let mut rng = rand::rng();
         let try_change_sr: usize = rng.random_range(0..100) + if won { 25 } else { 0 };
 
-        let sr_change_value: f64 =
-            rng.random_range(-50.0..50.0) + if !won { 20.0 * self.learning_mult } else { 0.0 };
+        let sr_change_value: f64 = rng.random_range(-50.0..50.0)
+            + if !won {
+                20.0 * self.learning_mult
+            } else {
+                rng.random_range(-5.0..5.0) * self.learning_mult
+            };
 
         if try_change_sr > 50 {
             self.sr += sr_change_value;

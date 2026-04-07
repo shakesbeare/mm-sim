@@ -21,14 +21,14 @@ pub const DEFAULT_DEVIATION: f64 = STD_DEV;
 /// Unrated players should get volatility of 0.06, but this value may be adjusted based on the
 /// application
 pub const DEFAULT_VOLATILITY: f64 = 0.06;
-/// The time measured in rating periods before the player's deviation returns to the default
-pub const TIME_TO_RESET: f64 = 100.;
+
+pub const PLACEMENTS_VOLATILITY: f64 = 1.0;
 
 /// Constrains the change in volatility over time
 /// Reasonable choices are between 0.3 and 1.2
 /// Small values prevent volatility measures from changing by large amounts
 ///     -> Thus, the system is more stable with small values
-pub const VOLATILITY_CONSTRAINT: f64 = 0.3;
+pub const VOLATILITY_CONSTRAINT: f64 = 0.7;
 
 /// Convergence tolerance relevant for Glicko-2 calculations
 pub const CONVERGENCE_TOLERANCE: f64 = 0.000001;
@@ -41,6 +41,8 @@ pub const GLICKO_CONFIG: Glicko2Config = Glicko2Config {
 pub const TEAM_SIZE: usize = 5;
 pub const TEAM_COUNT: usize = 2;
 pub const MATCH_PLAYER_COUNT: usize = TEAM_SIZE * TEAM_COUNT;
+
+pub const NUM_PLACEMENTS: usize = 10;
 
 #[derive(Resource, Debug, Default, PartialEq, PartialOrd, Clone, Copy)]
 pub struct MatchStats {

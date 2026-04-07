@@ -5,7 +5,7 @@ use rand::{Rng as _, seq::IteratorRandom as _, seq::SliceRandom as _};
 use rand_distr::{Distribution as _, weighted::WeightedIndex};
 
 use crate::{
-    MatchStats, TickTimer,
+    DEFAULT_VOLATILITY, MatchStats, PLACEMENTS_VOLATILITY, TickTimer,
     lobby::{InProgress, Lobby, WaitingForPlayers},
     player::{Any, InLobby, InQueue, IntoPlayerList, IntoPlayerListMut, LoggedOut, Player},
     time::SimTime,
@@ -97,13 +97,13 @@ pub fn spawn_random_player_archetype(
     mut flood: MessageReader<NeedNewPlayer>,
 ) {
     for _ in flood.read() {
-        commands.spawn(Player::new_random_archetype());
+        commands.spawn(Player::new_random_archetype(PLACEMENTS_VOLATILITY));
     }
 }
 
 pub fn add_new_players(mut commands: Commands, mut add_timer: Query<&mut PlayerAddTimer>) {
     if add_timer.single_mut().unwrap().tick().just_finished() {
-        let new_player = Player::new_beginner();
+        let new_player = Player::new_beginner(DEFAULT_VOLATILITY);
         commands.spawn(new_player);
     }
 }
