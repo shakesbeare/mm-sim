@@ -10,7 +10,8 @@ use tracing::*;
 use crate::{
     MEAN_MMR, MatchStats,
     lobby::{InProgress, Lobby, WaitingForPlayers},
-    player::{Any, InQueue, LoggedOut, Player}, player_management::{FlattenPlayerQuery, PlayerQuery},
+    player::{Any, InQueue, LoggedOut, Player},
+    player_management::{FlattenPlayerQuery, PlayerQuery},
 };
 
 use extra_collections::RingBuf;
@@ -210,6 +211,7 @@ pub fn mmr_stats(
 
 pub fn display_stats(
     players: Query<PlayerQuery>,
+    lobbies_waiting: Query<&Lobby<WaitingForPlayers>>,
     lobbies_in_progress: Query<&Lobby<InProgress>>,
     players_in_queue: Query<&Player<InQueue>>,
     mut log_timer: Query<&LogTimer>,
@@ -227,6 +229,8 @@ pub fn display_stats(
     let player_count_in_match = lobbies_in_progress.iter().flat_map(|m| m.players()).count();
     let all_players = players.flatten();
     let player_count = all_players.len();
+    let player_count_in_queue =
+        lobbies_waiting.iter().flat_map(|m| m.players()).count() + players_in_queue.iter().len();
 
     let mean_wait = mean_wait_time.0.iter().sum::<f64>() / SMOOTHING as f64;
     let low_wait = low_wait_time.0.iter().sum::<usize>() / SMOOTHING;
@@ -301,7 +305,7 @@ pub fn display_stats(
 
         println!(
             "Players in queue: {:07} — Players in match: {:07} — Players in Pool {:07} — Logged Out Players: {:07} — Total Players: {:07}",
-            players_in_queue.iter().len(),
+            player_count_in_queue,
             player_count_in_match,
             player_count - logged_out_count,
             logged_out_count,

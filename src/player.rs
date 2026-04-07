@@ -17,6 +17,7 @@ use crate::GLICKO_CONFIG;
 use crate::MAX_MMR;
 use crate::lobby::Complete;
 use crate::lobby::Lobby;
+use crate::time::MIN_LATENCY;
 use crate::{MEAN_MMR, STD_DEV};
 
 pub trait IntoPlayerList: Component {
@@ -182,6 +183,12 @@ impl Player<InQueue> {
         } else {
             f64::MAX
         }
+    }
+
+    pub fn max_latency_range(&self) -> usize {
+        let wait_time = self.queue_stats.wait_time.unwrap();
+        MIN_LATENCY + wait_time
+        // 300
     }
 
     pub fn join_lobby(mut self) -> Player<InLobby> {

@@ -4,6 +4,9 @@ use rand::Rng as _;
 use rand_distr::Distribution as _;
 use rand_distr::Normal;
 
+pub const MIN_LATENCY: usize = 100;
+pub const NUM_DATACENTERS: usize = 4;
+
 #[derive(Resource, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub struct SimTime {
     ticks: usize,
@@ -120,7 +123,9 @@ impl DateTime {
                 .unwrap();
             spline
                 .iter_positions(240)
-                .nth((self.hourf() * 10.0) as usize).unwrap().y
+                .nth((self.hourf() * 10.0) as usize)
+                .unwrap()
+                .y
         };
 
         let month_component = {
@@ -136,7 +141,9 @@ impl DateTime {
                 .unwrap();
             spline
                 .iter_positions(120)
-                .nth((self.monthf() * 10.0) as usize).unwrap().y
+                .nth((self.monthf() * 10.0) as usize)
+                .unwrap()
+                .y
         };
 
         let mut rng = rand::rng();
@@ -153,4 +160,10 @@ impl DateTime {
     pub fn monthf(&self) -> f32 {
         self.month as f32 + (self.day as f32 / 30.0) + (self.hourf() / 24.0 / 36.0)
     }
+}
+
+pub fn latency_between(left: usize, right: usize) -> usize {
+    let left = left % NUM_DATACENTERS;
+    let right = right % NUM_DATACENTERS;
+    MIN_LATENCY * (usize::max(left, right) - usize::min(left, right))
 }

@@ -87,7 +87,7 @@ pub fn chance_to_add(player_count: usize) -> f32 {
 }
 
 pub fn request_new_player(mut flood: MessageWriter<NeedNewPlayer>, players: Query<PlayerQuery>) {
-    if players.flatten().len() < TARGET_PLAYER_COUNT / 2 {
+    if players.flatten().len() < TARGET_PLAYER_COUNT {
         flood.write(NeedNewPlayer);
     }
 }

@@ -5,11 +5,17 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use mm_sim::{
-    MatchStats, lobby::{
+    MatchStats,
+    lobby::{
         Lobby, WaitingForPlayers, add_players_to_lobbies, end_matches, merge_lobbies, start_lobbies,
-    }, player::{InQueue, LoggedOut, Player}, player_management::{
-        NeedNewPlayer, PlayerAddTimer, PlayerCount, add_new_players, frustrated_players, give_up_queue, request_new_player, spawn_random_player_archetype, unfrustrated_players
-    }, stats::*, time::SimTime
+    },
+    player::{InQueue, LoggedOut, Player},
+    player_management::{
+        NeedNewPlayer, PlayerAddTimer, PlayerCount, add_new_players, frustrated_players,
+        give_up_queue, request_new_player, spawn_random_player_archetype, unfrustrated_players,
+    },
+    stats::*,
+    time::SimTime,
 };
 
 use extra_collections::RingBuf;
@@ -55,14 +61,24 @@ fn main() {
     app.add_systems(PreUpdate, tick);
     app.add_systems(PreUpdate, request_new_player);
 
+    app.add_systems(Update, spawn_random_player_archetype);
+
     app.add_systems(
         Update,
-        (add_players_to_lobbies, merge_lobbies, start_lobbies).chain(),
-    );
-    app.add_systems(Update, spawn_random_player_archetype);
-    app.add_systems(Update, end_matches);
+        (
+            end_matches,
 
-    app.add_systems(Update, (mmr_stats, wait_time_stats, display_stats).chain());
+            mmr_stats,
+            wait_time_stats,
+            display_stats,
+            // tick_count,
+
+            add_players_to_lobbies,
+            merge_lobbies,
+            start_lobbies,
+        )
+            .chain(),
+    );
 
     app.add_systems(PostUpdate, add_new_players);
     app.add_systems(PostUpdate, frustrated_players);

@@ -17,6 +17,7 @@ use crate::player::InQueue;
 use crate::player::IntoPlayerList;
 use crate::player::IntoPlayerListMut;
 use crate::player::Player;
+use crate::time::latency_between;
 use crate::{MATCH_PLAYER_COUNT, TEAM_COUNT, TEAM_SIZE};
 
 mod private {
@@ -94,6 +95,7 @@ pub union LobbyStatusData {
 #[derive(Component, Clone)]
 pub struct Lobby<T: LobbyStatusMarker> {
     status_data: LobbyStatusData,
+    offset: usize,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -110,6 +112,7 @@ impl Lobby<WaitingForPlayers> {
             status_data: LobbyStatusData {
                 waiting_for_players: std::array::from_fn(|_| None),
             },
+            offset: player.offset(),
             _marker: PhantomData,
         };
 
@@ -182,6 +185,10 @@ impl Lobby<WaitingForPlayers> {
     }
 
     pub fn can_accept(&self, audition: &Player<InQueue>) -> bool {
+        if latency_between(self.offset, audition.offset()) > audition.max_latency_range() {
+            return false;
+        }
+
         self.players().iter().filter_map(|p| *p).all(|p| {
             let combined_range = (p.max_rating_range() + audition.max_rating_range()) / 2.0;
             let actual_range = p.range_to(audition.as_any());
@@ -197,12 +204,8 @@ impl Lobby<WaitingForPlayers> {
         }
         let mut can_merge = true;
 
-        for self_p in self.players().iter().filter_map(|p| *p) {
-            for aud_p in audition.players().iter().filter_map(|p| *p) {
-                let combined_range = (self_p.max_rating_range() + aud_p.max_rating_range()) / 2.0;
-                let actual_range = self_p.range_to(aud_p.as_any());
-                can_merge = can_merge && (actual_range <= combined_range);
-            }
+        for aud_p in audition.players().iter().filter_map(|p| *p) {
+            can_merge = can_merge && self.can_accept(&aud_p);
         }
 
         can_merge
@@ -237,6 +240,7 @@ impl Lobby<InProgress> {
             status_data: LobbyStatusData {
                 in_progress: teams.map(|t| t.map(|p| p.unwrap())),
             },
+            offset: 0,
             _marker: PhantomData,
         }
     }
@@ -549,11 +553,28 @@ pub fn start_lobbies(
 
     let mut rng = rand::rng();
     for e in todo {
-        let duration = rng.random_range(10..60);
         let mut ent = world.entity_mut(e);
         // should be guaranteed
         let lobby = ent.take::<Lobby<WaitingForPlayers>>().unwrap();
         let new_lobby = lobby.start_game().unwrap();
+        let duration = {
+            let start = 10;
+            let end = 60;
+            let min_mean_sr: usize = new_lobby
+                .teams()
+                .iter()
+                .map(|t| t.iter().map(|p| p.sr() as usize).sum())
+                .min()
+                .unwrap();
+            let max_mean_sr: usize = new_lobby
+                .teams()
+                .iter()
+                .map(|t| t.iter().map(|p| p.sr() as usize).sum())
+                .max()
+                .unwrap();
+            let t = usize::max((max_mean_sr - min_mean_sr) / max_mean_sr, 1);
+            start + (1 / t) * (end - start)
+        };
         ent.insert(new_lobby);
         ent.insert(TickTimer::new(duration * 60, TimerMode::Once));
     }
